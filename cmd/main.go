@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"os/user"
 	"path/filepath"
 )
@@ -13,6 +14,9 @@ const (
 
 	// DefaultNotesDir holds the note data (default is ~/notes), can be overwritten by NNDIR
 	DefaultNotesDir = "notes"
+
+	// CmdTree is the Linux command for listing a directory
+	CmdTree = "tree"
 )
 
 var (
@@ -69,13 +73,27 @@ func parseAction(action string) {
 		fmt.Println("nn sync - not implemented")
 		break
 	case "show":
-		fmt.Println("nn show - not implemented")
-		break
+		show()
 	case "help":
 		help()
 	default:
 		help()
 	}
+}
+
+func show() {
+	var cmd *exec.Cmd
+	cmd = exec.Command(CmdTree, notesDir)
+	cmd.Stdin = os.Stdin
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	err := cmd.Run()
+
+	if err != nil {
+		fmt.Println("Cannot execute command:", err)
+		os.Exit(1)
+	}
+
 }
 
 func printConfig() {
