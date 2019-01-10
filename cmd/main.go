@@ -24,15 +24,15 @@ func help() {
 
 	fmt.Println(`nn - simple note taking
 
-	nn         interactive tui
+	nn         interactive tui (not implemented)
 
-	nn init    create new note environment
-	nn check   checks if everything is setup properly
+	nn init    create new note environment (not implemented)
+	nn check   checks if everything is setup properly (not implemented)
 
-	nn new     create new note
-	nn sync    sync note with git server
+	nn new     create new note (not implemented)
+	nn sync    sync note with git server (not implemented)
 
-	nn show    shows the content of the notes directory
+	nn show    shows the content of the notes directory (not implemented)
 
 	nn help    prints this message
 	`)
@@ -72,9 +72,9 @@ func parseAction(action string) {
 		fmt.Println("nn show - not implemented")
 		break
 	case "help":
+		help()
 	default:
 		help()
-		break
 	}
 }
 
