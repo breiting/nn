@@ -36,7 +36,7 @@ func help() {
 	nn new     create new note (not implemented)
 	nn sync    sync note with git server (not implemented)
 
-	nn show    shows the content of the notes directory (not implemented)
+	nn show    shows the content of the notes directory
 
 	nn help    prints this message
 	`)
