@@ -31,3 +31,7 @@ help developing this tool.
 
 In my software development career, I passed by almost all bigger programming languages like C/C++, Java, C#. Recently, i
 came across [Go](https://golang.org) and somehow like the language being precise and efficient.
+
+## References
+
+This project is influenced by couple of other projects like [nogo](https://github.com/marpaia/nogo).
