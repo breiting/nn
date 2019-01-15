@@ -1,55 +1,73 @@
 package main
 
 import (
+	"fmt"
 	tui "github.com/marcusolsson/tui-go"
-	"io/ioutil"
+	"os"
+	"os/exec"
 )
+
+var ui tui.UI
 
 // UIRunner wrapps the function to run the UI
 type UIRunner interface {
 	Run() error
 }
 
-type notebook struct {
-	name  string
-	count int64
+// DataProvider is an interface which provides access to the data
+type DataProvider interface {
+	GetNotebooks() ([]Notebook, error)
+	GetNotes(notebookIndex int) ([]Note, error)
+	GetFullPath(notebookIndex, noteIndex int) string
+	GetContent(notebookIndex, noteIndex int) string
 }
 
-// Open returns an UIRunner from a given directory
-func Open(path string) (UIRunner, error) {
-	files, err := ioutil.ReadDir(path)
+// NewTui creates a new TUI
+func NewTui(c DataProvider) tui.UI {
+
+	notebooks, err := c.GetNotebooks()
 	if err != nil {
-		return nil, err
+		panic("no notebooks found")
 	}
 
-	var notebooks []notebook
-	for _, f := range files {
-		notebooks = append(notebooks, notebook{name: f.Name()})
-	}
-	return newTuiUI(notebooks), nil
-}
-
-func newTuiUI(notebooks []notebook) tui.UI {
-
-	var str []string
+	// Notebooks
+	nbList := tui.NewList()
 	for _, n := range notebooks {
-		str = append(str, n.name)
-		// t.AppendRow(
-		// 	tui.NewLabel(n.name),
-		// 	tui.NewLabel(strconv.FormatInt(n.count, 10)),
-		// )
+		nbList.AddItems(n.Name)
 	}
-	l := tui.NewList()
-	l.AddItems(str...)
-	l.SetFocused(true)
+	nbList.SetFocused(true)
 
+	sidebar := tui.NewVBox(nbList)
+	sidebar.SetBorder(true)
+	sidebar.SetSizePolicy(tui.Minimum, tui.Expanding)
+
+	// Notes
+	notes, err := c.GetNotes(0)
+	noteList := tui.NewList()
+	for _, n := range notes {
+		noteList.AddItems(n.Name)
+	}
+	notesView := tui.NewVBox(noteList)
+	notesView.SetBorder(true)
+
+	// Preview
+	buffer := tui.NewTextEdit()
+	buffer.SetSizePolicy(tui.Expanding, tui.Expanding)
+	buffer.SetText("preview")
+	buffer.SetWordWrap(true)
+	bufferView := tui.NewVBox(buffer)
+	bufferView.SetBorder(true)
+	bufferView.SetSizePolicy(tui.Expanding, tui.Expanding)
+
+	tableBox := tui.NewHBox(sidebar, notesView, bufferView)
+
+	// Statusbar
 	status := tui.NewStatusBar("")
-	status.SetText("[press enter to switch to selected branch]")
+	status.SetText("[nn]")
 	status.SetPermanentText("[press esc or q to quit]")
-	tableBox := tui.NewVBox(l, tui.NewSpacer())
-	tableBox.SetBorder(true)
+
 	root := tui.NewVBox(
-		l,
+		tableBox,
 		status,
 	)
 
@@ -58,15 +76,63 @@ func newTuiUI(notebooks []notebook) tui.UI {
 	th.SetStyle("list.item", tui.Style{Bg: tui.ColorBlack, Fg: tui.ColorWhite})
 	th.SetStyle("list.item.selected", tui.Style{Bg: tui.ColorGreen, Fg: tui.ColorWhite})
 
-	ui, _ := tui.New(root)
+	ui, _ = tui.New(root)
 	ui.SetTheme(th)
 	ui.SetKeybinding("Esc", func() { ui.Quit() })
 	ui.SetKeybinding("q", func() { ui.Quit() })
-	l.OnItemActivated(func(l *tui.List) {
+	ui.SetKeybinding("r", func() { ui.Repaint() })
+	ui.SetKeybinding("h", func() {
+		nbList.SetFocused(true)
+		noteList.SetFocused(false)
 	})
-	l.OnSelectionChanged(func(l *tui.List) {
+	ui.SetKeybinding("Enter", func() {
+		if noteList.IsFocused() {
+			openFile(c.GetFullPath(nbList.Selected(), noteList.Selected()))
+		}
 	})
-	l.Select(0)
+
+	ui.SetKeybinding("l", func() {
+		nbList.SetFocused(false)
+		noteList.SetFocused(true)
+		noteList.Select(0)
+	})
+
+	nbList.OnItemActivated(func(l *tui.List) {
+	})
+	nbList.OnSelectionChanged(func(l *tui.List) {
+		noteList.RemoveItems()
+		notes, err := c.GetNotes(l.Selected())
+		if err != nil {
+			panic("error during fetch list")
+		}
+		for _, n := range notes {
+			noteList.AddItems(n.Name)
+		}
+
+	})
+
+	noteList.OnItemActivated(func(l *tui.List) {
+	})
+	noteList.OnSelectionChanged(func(l *tui.List) {
+		buffer.SetText(c.GetContent(nbList.Selected(), l.Selected()))
+	})
+	nbList.Select(0)
 
 	return ui
+}
+
+func openFile(fileName string) {
+	var cmd *exec.Cmd
+	cmd = exec.Command(Editor, fileName)
+	cmd.Stdin = os.Stdin
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	ui.Quit()
+	err := cmd.Run()
+	if err != nil {
+		fmt.Println("Couldn't open the file:", err)
+		os.Exit(1)
+	}
+	// TODO sync git
+	os.Exit(0)
 }

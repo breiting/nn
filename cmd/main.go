@@ -20,8 +20,8 @@ const (
 )
 
 var (
-	editor   = DefaultEditor
-	notesDir = DefaultNotesDir
+	Editor   = DefaultEditor
+	NotesDir = DefaultNotesDir
 )
 
 func help() {
@@ -49,12 +49,12 @@ func init() {
 	user, _ := user.Current()
 
 	if editorEnv != "" {
-		editor = editorEnv
+		Editor = editorEnv
 	}
 	if notesDirEnv != "" {
-		notesDir = notesDirEnv
+		NotesDir = notesDirEnv
 	} else {
-		notesDir = filepath.Join(user.HomeDir, DefaultNotesDir)
+		NotesDir = filepath.Join(user.HomeDir, DefaultNotesDir)
 	}
 }
 
@@ -83,7 +83,7 @@ func parseAction(action string) {
 
 func show() {
 	var cmd *exec.Cmd
-	cmd = exec.Command(CmdTree, notesDir)
+	cmd = exec.Command(CmdTree, NotesDir)
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
@@ -98,8 +98,8 @@ func show() {
 
 func printConfig() {
 	fmt.Printf("Configuration\n\n")
-	fmt.Println("	EDITOR           " + editor)
-	fmt.Println("	Notes directory  " + notesDir)
+	fmt.Println("	EDITOR           " + Editor)
+	fmt.Println("	Notes directory  " + NotesDir)
 }
 
 // NotImplemented exits the application
@@ -113,12 +113,9 @@ func NotImplemented() {
 func main() {
 
 	if len(os.Args) == 1 {
-		uiRunner, err := Open(notesDir)
-		if err != nil {
-			fmt.Printf("Error: %s\n", err.Error())
-			os.Exit(1)
-		}
-		err = uiRunner.Run()
+		// dataProvider := NewTestDataProvider()
+		dataProvider := NewDataProvider()
+		NewTui(dataProvider).Run()
 	} else if len(os.Args) == 2 {
 		parseAction(os.Args[1])
 	}
