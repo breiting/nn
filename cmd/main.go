@@ -113,8 +113,12 @@ func NotImplemented() {
 func main() {
 
 	if len(os.Args) == 1 {
-		tui := NewTui()
-		tui.Start()
+		uiRunner, err := Open(notesDir)
+		if err != nil {
+			fmt.Printf("Error: %s\n", err.Error())
+			os.Exit(1)
+		}
+		err = uiRunner.Run()
 	} else if len(os.Args) == 2 {
 		parseAction(os.Args[1])
 	}
