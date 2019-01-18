@@ -7,7 +7,18 @@ import (
 	"os/exec"
 )
 
-var ui tui.UI
+// NNMainView is the main user interface for nn
+type NNMainView struct {
+	ui            tui.UI
+	root          *tui.Box
+	topic         *tui.TextEdit
+	statusBar     *tui.StatusBar
+	listNotebooks *tui.List
+	listNotes     *tui.List
+	preview       *tui.TextEdit
+	focusWidgets  []tui.Widget
+	data          DataProvider
+}
 
 // UIRunner wrapps the function to run the UI
 type UIRunner interface {
@@ -17,13 +28,25 @@ type UIRunner interface {
 // DataProvider is an interface which provides access to the data
 type DataProvider interface {
 	GetNotebooks() ([]Notebook, error)
-	GetNotes(notebookIndex int) ([]Note, error)
+	GetNotes() ([]Note, error)
 	GetFullPath(notebookIndex, noteIndex int) string
 	GetContent(notebookIndex, noteIndex int) string
+	GetNewNotePath(topic string) string
+
+	SetSelectedNotebook(notebookIndex int)
+	SetSelectedNote(notebookIndex, noteIndex int)
+}
+
+// Run starts the user interface
+func (v *NNMainView) Run() error {
+	return v.ui.Run()
 }
 
 // NewTui creates a new TUI
-func NewTui(c DataProvider) tui.UI {
+func NewTui(c DataProvider) UIRunner {
+
+	view := NNMainView{}
+	view.data = c
 
 	notebooks, err := c.GetNotebooks()
 	if err != nil {
@@ -31,44 +54,48 @@ func NewTui(c DataProvider) tui.UI {
 	}
 
 	// Notebooks
-	nbList := tui.NewList()
+	view.listNotebooks = tui.NewList()
 	for _, n := range notebooks {
-		nbList.AddItems(n.Name)
+		view.listNotebooks.AddItems(n.Name)
 	}
-	nbList.SetFocused(true)
+	view.focusWidgets = append(view.focusWidgets, view.listNotebooks)
+	view.listNotebooks.SetFocused(true)
 
-	sidebar := tui.NewVBox(nbList)
+	sidebar := tui.NewVBox(view.listNotebooks)
 	sidebar.SetBorder(true)
 	sidebar.SetSizePolicy(tui.Minimum, tui.Expanding)
 
 	// Notes
-	notes, err := c.GetNotes(0)
-	noteList := tui.NewList()
+	notes, err := c.GetNotes()
+	view.listNotes = tui.NewList()
 	for _, n := range notes {
-		noteList.AddItems(n.Name)
+		view.listNotes.AddItems(n.Name)
 	}
-	notesView := tui.NewVBox(noteList)
-	notesView.SetBorder(true)
+	view.focusWidgets = append(view.focusWidgets, view.listNotes)
+
+	notesBox := tui.NewVBox(view.listNotes)
+	notesBox.SetBorder(true)
 
 	// Preview
-	buffer := tui.NewTextEdit()
-	buffer.SetSizePolicy(tui.Expanding, tui.Expanding)
-	buffer.SetText("preview")
-	buffer.SetWordWrap(true)
-	bufferView := tui.NewVBox(buffer)
-	bufferView.SetBorder(true)
-	bufferView.SetSizePolicy(tui.Expanding, tui.Expanding)
+	view.preview = tui.NewTextEdit()
+	view.preview.SetSizePolicy(tui.Expanding, tui.Expanding)
+	view.preview.SetText("preview")
+	view.preview.SetWordWrap(true)
+	previewBox := tui.NewVBox(view.preview)
+	previewBox.SetBorder(true)
+	previewBox.SetSizePolicy(tui.Expanding, tui.Expanding)
 
-	tableBox := tui.NewHBox(sidebar, notesView, bufferView)
+	tableBox := tui.NewHBox(sidebar, notesBox, previewBox)
+	tableBox.SetSizePolicy(tui.Expanding, tui.Expanding)
 
 	// Statusbar
-	status := tui.NewStatusBar("")
-	status.SetText("[nn]")
-	status.SetPermanentText("[press esc or q to quit]")
+	view.statusBar = tui.NewStatusBar("")
+	view.statusBar.SetText("[nn]")
+	view.statusBar.SetPermanentText("[press esc or q to quit]")
 
-	root := tui.NewVBox(
+	view.root = tui.NewVBox(
 		tableBox,
-		status,
+		view.statusBar,
 	)
 
 	th := tui.NewTheme()
@@ -76,58 +103,106 @@ func NewTui(c DataProvider) tui.UI {
 	th.SetStyle("list.item", tui.Style{Bg: tui.ColorBlack, Fg: tui.ColorWhite})
 	th.SetStyle("list.item.selected", tui.Style{Bg: tui.ColorGreen, Fg: tui.ColorWhite})
 
-	ui, _ = tui.New(root)
-	ui.SetTheme(th)
-	ui.SetKeybinding("Esc", func() { ui.Quit() })
-	ui.SetKeybinding("q", func() { ui.Quit() })
-	ui.SetKeybinding("r", func() { ui.Repaint() })
-	ui.SetKeybinding("h", func() {
-		nbList.SetFocused(true)
-		noteList.SetFocused(false)
-	})
-	ui.SetKeybinding("Enter", func() {
-		if noteList.IsFocused() {
-			openFile(c.GetFullPath(nbList.Selected(), noteList.Selected()))
-		}
-	})
+	view.ui, _ = tui.New(view.root)
+	view.ui.SetTheme(th)
+	view.setKeybindingsDefault()
 
-	ui.SetKeybinding("l", func() {
-		nbList.SetFocused(false)
-		noteList.SetFocused(true)
-		noteList.Select(0)
-	})
-
-	nbList.OnItemActivated(func(l *tui.List) {
-	})
-	nbList.OnSelectionChanged(func(l *tui.List) {
-		noteList.RemoveItems()
-		notes, err := c.GetNotes(l.Selected())
+	// nbList.OnItemActivated(func(l *tui.List) {
+	// })
+	view.listNotebooks.OnSelectionChanged(func(l *tui.List) {
+		view.data.SetSelectedNotebook(l.Selected())
+		view.listNotes.RemoveItems()
+		notes, err := c.GetNotes()
 		if err != nil {
 			panic("error during fetch list")
 		}
 		for _, n := range notes {
-			noteList.AddItems(n.Name)
+			view.listNotes.AddItems(n.Name)
 		}
-
 	})
 
-	noteList.OnItemActivated(func(l *tui.List) {
+	view.listNotes.OnSelectionChanged(func(l *tui.List) {
+		view.preview.SetText(c.GetContent(
+			view.listNotebooks.Selected(),
+			view.listNotes.Selected()))
 	})
-	noteList.OnSelectionChanged(func(l *tui.List) {
-		buffer.SetText(c.GetContent(nbList.Selected(), l.Selected()))
-	})
-	nbList.Select(0)
 
-	return ui
+	view.listNotebooks.Select(0)
+	return &view
 }
 
-func openFile(fileName string) {
+func (v *NNMainView) unFocusAll() {
+	for _, w := range v.focusWidgets {
+		w.SetFocused(false)
+	}
+}
+
+func (v *NNMainView) setKeybindingsDefault() {
+	v.ui.ClearKeybindings()
+	v.ui.SetKeybinding("Esc", func() { v.ui.Quit() })
+	v.ui.SetKeybinding("q", func() { v.ui.Quit() })
+	v.ui.SetKeybinding("h", func() {
+		v.unFocusAll()
+		v.listNotebooks.SetFocused(true)
+	})
+	v.ui.SetKeybinding("Enter", func() {
+		if v.listNotes.IsFocused() {
+			v.openFile(v.data.GetFullPath(
+				v.listNotebooks.Selected(),
+				v.listNotes.Selected()))
+		}
+	})
+
+	v.ui.SetKeybinding("l", func() {
+		v.unFocusAll()
+		v.listNotes.SetFocused(true)
+		v.listNotes.Select(0)
+	})
+
+	v.ui.SetKeybinding("n", func() {
+		if v.listNotebooks.IsFocused() {
+			label := tui.NewLabel("Topic: ")
+			v.topic = tui.NewTextEdit()
+			command := tui.NewHBox(label, v.topic, tui.NewSpacer())
+
+			v.setKeybindingsCommand()
+			v.unFocusAll()
+			v.root.Remove(1)
+
+			v.root.Append(command)
+			v.topic.SetFocused(true)
+		}
+	})
+}
+
+func (v *NNMainView) setKeybindingsCommand() {
+	v.ui.ClearKeybindings()
+
+	v.ui.SetKeybinding("Esc", func() {
+		v.unFocusAll()
+		v.root.Remove(1)
+		v.root.Append(v.statusBar)
+		v.setKeybindingsDefault()
+		v.listNotebooks.SetFocused(true)
+	})
+
+	v.ui.SetKeybinding("Enter", func() {
+		v.newNote(v.topic.Text())
+	})
+}
+
+func (v *NNMainView) newNote(topic string) {
+	filePath := v.data.GetNewNotePath(topic)
+	v.openFile(filePath)
+}
+
+func (v *NNMainView) openFile(fileName string) {
 	var cmd *exec.Cmd
 	cmd = exec.Command(Editor, fileName)
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
-	ui.Quit()
+	v.ui.Quit()
 	err := cmd.Run()
 	if err != nil {
 		fmt.Println("Couldn't open the file:", err)

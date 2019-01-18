@@ -25,12 +25,12 @@ func (t *testData) GetNotebooks() ([]Notebook, error) {
 }
 
 // GetNotes implements DataProvider interface
-func (t *testData) GetNotes(notebookIndex int) ([]Note, error) {
+func (t *testData) GetNotes() ([]Note, error) {
 
 	var notes []Note
 
 	for i := 0; i < 100; i++ {
-		name := "Note " + strconv.FormatInt((int64)(i), 10) + " of Book " + strconv.FormatInt((int64)(notebookIndex), 10)
+		name := "Note " + strconv.FormatInt((int64)(i), 10)
 		notes = append(notes, Note{Name: name})
 	}
 
@@ -42,5 +42,15 @@ func (t *testData) GetContent(nbIndex, nIndex int) string {
 }
 
 func (t *testData) GetFullPath(notebookIndex, noteIndex int) string {
+	return "test.txt"
+}
+
+func (t *testData) SetSelectedNotebook(notebookIndex int) {
+}
+
+func (t *testData) SetSelectedNote(notebookIndex, noteIndex int) {
+}
+
+func (t *testData) GetNewNotePath(topic string) string {
 	return "test.txt"
 }
