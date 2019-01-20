@@ -20,7 +20,9 @@ const (
 )
 
 var (
-	Editor   = DefaultEditor
+	// Editor stores the editor which should be used
+	Editor = DefaultEditor
+	// NotesDir stores the directory where all the notes are stored
 	NotesDir = DefaultNotesDir
 )
 
@@ -28,7 +30,7 @@ func help() {
 
 	fmt.Println(`nn - simple note taking
 
-	nn         interactive tui (not implemented)
+	nn         interactive tui
 
 	nn init    create new note environment (not implemented)
 	nn check   checks if everything is setup properly (not implemented)
