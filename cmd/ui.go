@@ -1,8 +1,11 @@
 package main
 
 import (
+	"fmt"
 	"github.com/breiting/tview"
 	"github.com/gdamore/tcell"
+	"os"
+	"os/exec"
 )
 
 // NNMainView is the main user interface for nn
@@ -35,6 +38,15 @@ type DataProvider interface {
 // Run starts the user interface
 func (v *NNMainView) Run() error {
 	return v.app.Run()
+}
+
+func (v *NNMainView) handleEditNote(index int, mainText, secondaryText string, shortcut rune) {
+
+	v.app.Suspend(func() {
+		v.openFile(v.data.GetFullPath(
+			v.listNotebooks.GetCurrentItem(),
+			v.listNotes.GetCurrentItem()))
+	})
 }
 
 func (v *NNMainView) handleNotebookChanged(index int, mainText, secondaryText string, shortcut rune) {
@@ -95,10 +107,13 @@ func NewTui(c DataProvider) UIRunner {
 		view.listNotes.AddItem(n.Name, "", 0, nil)
 	}
 	view.listNotes.SetBorder(true)
+	view.listNotes.SetSelectedFunc(view.handleEditNote)
 
 	view.listNotes.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		if event.Rune() == 'h' {
 			view.app.SetFocus(view.listNotebooks)
+		} else if event.Rune() == 'q' {
+			view.app.Stop()
 		}
 		return event
 	})
@@ -185,4 +200,17 @@ func NewTui(c DataProvider) UIRunner {
 	//
 	// view.listNotebooks.Select(0)
 	return &view
+}
+
+func (v *NNMainView) openFile(fileName string) {
+	var cmd *exec.Cmd
+	cmd = exec.Command(Editor, fileName)
+	cmd.Stdin = os.Stdin
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	err := cmd.Run()
+	if err != nil {
+		fmt.Println("Couldn't open the file:", err)
+		os.Exit(1)
+	}
 }

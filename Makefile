@@ -4,7 +4,7 @@ MANPREFIX=/man
 all:
 	go build -o nn cmd/*.go
 
-install: all
+install:
 	@echo installing executable file to ${DESTDIR}${PREFIX}/bin
 	@mkdir -p ${DESTDIR}${PREFIX}/bin
 	@cp -f nn ${DESTDIR}${PREFIX}/bin
