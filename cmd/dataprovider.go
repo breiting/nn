@@ -5,6 +5,7 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 )
 
@@ -14,6 +15,13 @@ type dataProvider struct {
 	selectedNote     int
 }
 
+// ByDate sorts the notes by date
+type ByDate []Note
+
+func (a ByDate) Len() int           { return len(a) }
+func (a ByDate) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
+func (a ByDate) Less(i, j int) bool { return a[i].Modified.After(a[j].Modified) }
+
 // NewDataProvider creates a new data provider
 func NewDataProvider() DataProvider {
 	return &dataProvider{}
@@ -21,7 +29,8 @@ func NewDataProvider() DataProvider {
 
 func acceptedPath(f os.FileInfo) bool {
 	return f.IsDir() &&
-		!strings.Contains(f.Name(), ".git")
+		!strings.Contains(f.Name(), ".git") &&
+		!strings.Contains(f.Name(), ".template")
 }
 
 // GetNotebooks implements DataProvider interface
@@ -67,12 +76,15 @@ func (t *dataProvider) GetNotes() ([]Note, error) {
 				return e
 			}
 
-			// check if it is a regular file (not dir)
-			if info.Mode().IsRegular() {
-				notes = append(notes, Note{Name: info.Name()})
+			// check if it is a regular file (not dir) and ignore hidden files
+			if info.Mode().IsRegular() && !strings.HasPrefix(info.Name(), ".") {
+				notes = append(notes, Note{Name: info.Name(), Modified: info.ModTime()})
 			}
 			return nil
 		})
+
+	// sort result
+	sort.Sort(ByDate(notes))
 
 	// cache result
 	t.notebooks[t.selectedNotebook].Notes = notes

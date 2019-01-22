@@ -16,6 +16,7 @@ type NNMainView struct {
 	data          DataProvider
 	listNotebooks *tview.List
 	listNotes     *tview.List
+	preview       *tview.TextView
 }
 
 // UIRunner wrapps the function to run the UI
@@ -49,6 +50,16 @@ func (v *NNMainView) handleEditNote(index int, mainText, secondaryText string, s
 	})
 }
 
+func (v *NNMainView) handleNotesChanged(index int, mainText, secondaryText string, shortcut rune) {
+
+	if v.listNotes.HasFocus() {
+		v.preview.SetText(v.data.GetContent(
+			v.listNotebooks.GetCurrentItem(),
+			v.listNotes.GetCurrentItem()))
+		v.preview.ScrollToBeginning()
+	}
+}
+
 func (v *NNMainView) handleNotebookChanged(index int, mainText, secondaryText string, shortcut rune) {
 
 	v.data.SetSelectedNotebook(index)
@@ -60,6 +71,8 @@ func (v *NNMainView) handleNotebookChanged(index int, mainText, secondaryText st
 	for _, n := range notes {
 		v.listNotes.AddItem(n.Name, "", 0, nil)
 	}
+	v.preview.SetText(v.data.GetContent(v.listNotebooks.GetCurrentItem(), 0))
+	v.preview.ScrollToBeginning()
 }
 
 // NewTui creates a new TUI
@@ -107,6 +120,7 @@ func NewTui(c DataProvider) UIRunner {
 		view.listNotes.AddItem(n.Name, "", 0, nil)
 	}
 	view.listNotes.SetBorder(true)
+	view.listNotes.SetChangedFunc(view.handleNotesChanged)
 	view.listNotes.SetSelectedFunc(view.handleEditNote)
 
 	view.listNotes.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
@@ -118,13 +132,16 @@ func NewTui(c DataProvider) UIRunner {
 		return event
 	})
 
-	root := tview.NewFlex().SetDirection(tview.FlexRow)
+	// Preview
+	view.preview = tview.NewTextView().SetText("nothing to show").SetWrap(true)
+	view.preview.SetBorder(true)
 
 	main := tview.NewFlex()
 	main.AddItem(view.listNotebooks, 0, 1, true)
 	main.AddItem(view.listNotes, 0, 2, false)
-	// main.AddItem(tview.NewBox().SetBorder(true).SetTitle("Box Demo"), 0, 2, false)
+	main.AddItem(view.preview, 0, 3, false)
 
+	root := tview.NewFlex().SetDirection(tview.FlexRow)
 	root.AddItem(main, 0, 1, true)
 
 	view.statusBar = tview.NewTextView().SetText("nn - ready")
