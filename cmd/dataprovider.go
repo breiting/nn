@@ -7,9 +7,10 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 )
 
-type dataProvider struct {
+type dataModel struct {
 	notebooks        []Notebook
 	selectedNotebook int
 	selectedNote     int
@@ -22,9 +23,9 @@ func (a ByDate) Len() int           { return len(a) }
 func (a ByDate) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
 func (a ByDate) Less(i, j int) bool { return a[i].Modified.After(a[j].Modified) }
 
-// NewDataProvider creates a new data provider
-func NewDataProvider() DataProvider {
-	return &dataProvider{}
+// NewDataModel creates a new data provider
+func NewDataModel() DataModel {
+	return &dataModel{}
 }
 
 func acceptedPath(f os.FileInfo) bool {
@@ -33,8 +34,8 @@ func acceptedPath(f os.FileInfo) bool {
 		!strings.Contains(f.Name(), ".template")
 }
 
-// GetNotebooks implements DataProvider interface
-func (t *dataProvider) GetNotebooks() ([]Notebook, error) {
+// GetNotebooks implements DataModel interface
+func (t *dataModel) GetNotebooks() ([]Notebook, error) {
 
 	files, err := ioutil.ReadDir(NotesDir)
 	if err != nil {
@@ -43,7 +44,7 @@ func (t *dataProvider) GetNotebooks() ([]Notebook, error) {
 
 	for _, f := range files {
 		if acceptedPath(f) {
-			t.notebooks = append(t.notebooks, Notebook{Name: f.Name()})
+			t.notebooks = append(t.notebooks, Notebook{Name: f.Name(), Dirty: true})
 		}
 	}
 
@@ -55,16 +56,16 @@ func (t *dataProvider) GetNotebooks() ([]Notebook, error) {
 	return t.notebooks, nil
 }
 
-// GetNotes implements DataProvider interface requires to have
+// GetNotes implements DataModel interface requires to have
 // a selected notebook first
-func (t *dataProvider) GetNotes() ([]Note, error) {
+func (t *dataModel) GetNotes() ([]Note, error) {
 
 	var notes []Note
 	if t.selectedNotebook == -1 {
 		return notes, fmt.Errorf("no notebook selected")
 	}
 	// return cached result
-	if len(t.notebooks[t.selectedNotebook].Notes) > 0 {
+	if len(t.notebooks[t.selectedNotebook].Notes) > 0 && !t.notebooks[t.selectedNotebook].Dirty {
 		return t.notebooks[t.selectedNotebook].Notes, nil
 	}
 
@@ -88,6 +89,8 @@ func (t *dataProvider) GetNotes() ([]Note, error) {
 
 	// cache result
 	t.notebooks[t.selectedNotebook].Notes = notes
+	t.notebooks[t.selectedNotebook].Dirty = false
+
 	if len(notes) > 0 {
 		t.selectedNote = 0
 	} else {
@@ -97,7 +100,7 @@ func (t *dataProvider) GetNotes() ([]Note, error) {
 	return notes, err
 }
 
-func (t *dataProvider) GetContent(notebookIndex, noteIndex int) string {
+func (t *dataModel) GetContent(notebookIndex, noteIndex int) string {
 
 	b, err := ioutil.ReadFile(t.GetFullPath(notebookIndex, noteIndex))
 	if err != nil {
@@ -107,7 +110,7 @@ func (t *dataProvider) GetContent(notebookIndex, noteIndex int) string {
 	return string(b)
 }
 
-func (t *dataProvider) GetFullPath(notebookIndex, noteIndex int) string {
+func (t *dataModel) GetFullPath(notebookIndex, noteIndex int) string {
 	if notebookIndex < 0 || notebookIndex > len(t.notebooks)-1 {
 		return ""
 	}
@@ -124,7 +127,7 @@ func (t *dataProvider) GetFullPath(notebookIndex, noteIndex int) string {
 		notebook.Notes[noteIndex].Name
 }
 
-func (t *dataProvider) getNotebook() (*Notebook, error) {
+func (t *dataModel) getNotebook() (*Notebook, error) {
 
 	if t.selectedNotebook < 0 || t.selectedNotebook > len(t.notebooks)-1 {
 		return nil, fmt.Errorf("out of range")
@@ -132,27 +135,33 @@ func (t *dataProvider) getNotebook() (*Notebook, error) {
 	return &t.notebooks[t.selectedNotebook], nil
 }
 
-func (t *dataProvider) SetSelectedNotebook(notebookIndex int) {
+func (t *dataModel) SetSelectedNotebook(notebookIndex int) {
 	t.selectedNotebook = notebookIndex
 }
 
-func (t *dataProvider) SetSelectedNote(notebookIndex, noteIndex int) {
+func (t *dataModel) SetSelectedNote(notebookIndex, noteIndex int) {
 	t.SetSelectedNotebook(notebookIndex)
 	t.selectedNote = noteIndex
 }
 
-func (t *dataProvider) GetNewNotePath(topic string) string {
+func (t *dataModel) GetNewNotePath(topic string) string {
 
 	notebook, err := t.getNotebook()
 	if err != nil {
 		return "dummy.md"
 	}
+	now := time.Now()
+	dateStr := fmt.Sprintf("%4d-%02d-%02d", now.Year(), now.Month(), now.Day())
 	return NotesDir +
 		string(os.PathSeparator) +
 		notebook.Name +
 		string(os.PathSeparator) +
-		"2019-01-11" + // TODO
+		dateStr +
 		"-" +
 		topic +
 		".md"
+}
+
+func (t *dataModel) SetNotebookDirty(notebookIndex int) {
+	t.notebooks[notebookIndex].Dirty = true
 }

@@ -6,12 +6,12 @@ import (
 
 type testData struct{}
 
-// NewTestDataProvider creates a new test data provider
-func NewTestDataProvider() DataProvider {
+// NewTestDataModel creates a new test data provider
+func NewTestDataModel() DataModel {
 	return &testData{}
 }
 
-// GetNotebooks implements DataProvider interface
+// GetNotebooks implements DataModel interface
 func (t *testData) GetNotebooks() ([]Notebook, error) {
 
 	var notebooks []Notebook
@@ -24,7 +24,7 @@ func (t *testData) GetNotebooks() ([]Notebook, error) {
 	return notebooks, nil
 }
 
-// GetNotes implements DataProvider interface
+// GetNotes implements DataModel interface
 func (t *testData) GetNotes() ([]Note, error) {
 
 	var notes []Note
@@ -53,4 +53,7 @@ func (t *testData) SetSelectedNote(notebookIndex, noteIndex int) {
 
 func (t *testData) GetNewNotePath(topic string) string {
 	return "test.txt"
+}
+
+func (t *testData) SetNotebookDirty(notebookIndex int) {
 }

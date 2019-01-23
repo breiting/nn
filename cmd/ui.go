@@ -1,11 +1,8 @@
 package main
 
 import (
-	"fmt"
 	"github.com/breiting/tview"
 	"github.com/gdamore/tcell"
-	"os"
-	"os/exec"
 )
 
 // NNMainView is the main user interface for nn
@@ -13,10 +10,13 @@ type NNMainView struct {
 	app           *tview.Application
 	cmd           *tview.InputField
 	statusBar     *tview.TextView
-	data          DataProvider
 	listNotebooks *tview.List
 	listNotes     *tview.List
 	preview       *tview.TextView
+	root          *tview.Flex
+
+	model      DataModel
+	controller Controller
 }
 
 // UIRunner wrapps the function to run the UI
@@ -24,8 +24,8 @@ type UIRunner interface {
 	Run() error
 }
 
-// DataProvider is an interface which provides access to the data
-type DataProvider interface {
+// DataModel is an interface which provides access to the model
+type DataModel interface {
 	GetNotebooks() ([]Notebook, error)
 	GetNotes() ([]Note, error)
 	GetFullPath(notebookIndex, noteIndex int) string
@@ -34,6 +34,12 @@ type DataProvider interface {
 
 	SetSelectedNotebook(notebookIndex int)
 	SetSelectedNote(notebookIndex, noteIndex int)
+	SetNotebookDirty(notebookIndex int)
+}
+
+// Controller is an interface for providing business logic
+type Controller interface {
+	editFile(fileName string)
 }
 
 // Run starts the user interface
@@ -41,10 +47,13 @@ func (v *NNMainView) Run() error {
 	return v.app.Run()
 }
 
+// ---------------------------------------------------------------------------------
+// EVENT HANDLER
+// ---------------------------------------------------------------------------------
 func (v *NNMainView) handleEditNote(index int, mainText, secondaryText string, shortcut rune) {
 
 	v.app.Suspend(func() {
-		v.openFile(v.data.GetFullPath(
+		v.controller.editFile(v.model.GetFullPath(
 			v.listNotebooks.GetCurrentItem(),
 			v.listNotes.GetCurrentItem()))
 	})
@@ -53,7 +62,7 @@ func (v *NNMainView) handleEditNote(index int, mainText, secondaryText string, s
 func (v *NNMainView) handleNotesChanged(index int, mainText, secondaryText string, shortcut rune) {
 
 	if v.listNotes.HasFocus() {
-		v.preview.SetText(v.data.GetContent(
+		v.preview.SetText(v.model.GetContent(
 			v.listNotebooks.GetCurrentItem(),
 			v.listNotes.GetCurrentItem()))
 		v.preview.ScrollToBeginning()
@@ -62,26 +71,28 @@ func (v *NNMainView) handleNotesChanged(index int, mainText, secondaryText strin
 
 func (v *NNMainView) handleNotebookChanged(index int, mainText, secondaryText string, shortcut rune) {
 
-	v.data.SetSelectedNotebook(index)
+	v.model.SetSelectedNotebook(index)
 	v.listNotes.Clear()
-	notes, err := v.data.GetNotes()
+	notes, err := v.model.GetNotes()
 	if err != nil {
 		panic("error during fetch list")
 	}
 	for _, n := range notes {
 		v.listNotes.AddItem(n.Name, "", 0, nil)
 	}
-	v.preview.SetText(v.data.GetContent(v.listNotebooks.GetCurrentItem(), 0))
+	v.preview.SetText(v.model.GetContent(v.listNotebooks.GetCurrentItem(), 0))
 	v.preview.ScrollToBeginning()
 }
 
 // NewTui creates a new TUI
-func NewTui(c DataProvider) UIRunner {
+// ---------------------------------------------------------------------------------
+func NewTui(d DataModel, c Controller) UIRunner {
 
 	view := NNMainView{}
-	view.data = c
+	view.model = d
+	view.controller = c
 
-	notebooks, err := c.GetNotebooks()
+	notebooks, err := d.GetNotebooks()
 	if err != nil {
 		panic("no notebooks found")
 	}
@@ -106,6 +117,9 @@ func NewTui(c DataProvider) UIRunner {
 		if event.Rune() == 'q' {
 			view.app.Stop()
 		}
+		if event.Rune() == 'n' {
+			view.enableCommand("Topic: ")
+		}
 		// if event.Rune() == ':' {
 		// 	view.app.SetFocus(view.input)
 		// 	view.listNotebooks.SetCurrentItem(view.listNotebooks.GetCurrentItem() - 1)
@@ -114,7 +128,7 @@ func NewTui(c DataProvider) UIRunner {
 	})
 
 	// Notes
-	notes, err := c.GetNotes()
+	notes, err := d.GetNotes()
 	view.listNotes = tview.NewList().ShowSecondaryText(false)
 	for _, n := range notes {
 		view.listNotes.AddItem(n.Name, "", 0, nil)
@@ -141,93 +155,58 @@ func NewTui(c DataProvider) UIRunner {
 	main.AddItem(view.listNotes, 0, 2, false)
 	main.AddItem(view.preview, 0, 3, false)
 
-	root := tview.NewFlex().SetDirection(tview.FlexRow)
-	root.AddItem(main, 0, 1, true)
+	view.root = tview.NewFlex().SetDirection(tview.FlexRow)
+	view.root.AddItem(main, 0, 1, true)
 
 	view.statusBar = tview.NewTextView().SetText("nn - ready")
 
 	view.cmd = tview.NewInputField().
 		SetLabel("Topic: ").
 		SetDoneFunc(func(key tcell.Key) {
-			view.app.Stop()
+			if key == tcell.KeyEnter {
+				view.newNote(view.cmd.GetText())
+				view.enableStatusBar()
+			} else if key == tcell.KeyEsc {
+				view.enableStatusBar()
+			}
 		})
+	view.root.AddItem(view.cmd, 1, 2, false)
 
-	root.AddItem(view.statusBar, 1, 2, false)
-
-	view.app = tview.NewApplication().SetRoot(root, true)
+	view.app = tview.NewApplication().SetRoot(view.root, true)
 
 	view.app.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		if event.Key() == tcell.KeyEsc {
-			view.app.Stop()
+			// view.app.Stop()
 		}
 		return event
 	})
+	view.enableStatusBar()
 
-	//
-	// // Preview
-	// view.preview = tui.NewTextEdit()
-	// view.preview.SetSizePolicy(tui.Expanding, tui.Expanding)
-	// view.preview.SetText("preview")
-	// view.preview.SetWordWrap(true)
-	// previewBox := tui.NewVBox(view.preview)
-	// previewBox.SetBorder(true)
-	// previewBox.SetSizePolicy(tui.Expanding, tui.Expanding)
-	//
-	// tableBox := tui.NewHBox(sidebar, notesBox, previewBox)
-	// tableBox.SetSizePolicy(tui.Expanding, tui.Expanding)
-	//
-	// // Statusbar
-	// view.statusBar = tui.NewStatusBar("")
-	// view.statusBar.SetText("[nn]")
-	// view.statusBar.SetPermanentText("[press esc or q to quit]")
-	//
-	// view.root = tui.NewVBox(
-	// 	tableBox,
-	// 	view.statusBar,
-	// )
-	//
-	// th := tui.NewTheme()
-	// th.SetStyle("table.cell.selected", tui.Style{Bg: tui.ColorGreen, Fg: tui.ColorWhite})
-	// th.SetStyle("list.item", tui.Style{Bg: tui.ColorBlack, Fg: tui.ColorWhite})
-	// th.SetStyle("list.item.selected", tui.Style{Bg: tui.ColorGreen, Fg: tui.ColorWhite})
-	//
-	// view.ui, _ = tui.New(view.root)
-	// view.ui.SetTheme(th)
-	// view.setKeybindingsDefault()
-	//
-	// // nbList.OnItemActivated(func(l *tui.List) {
-	// // })
-	// view.listNotebooks.OnSelectionChanged(func(l *tui.List) {
-	// 	view.data.SetSelectedNotebook(l.Selected())
-	// 	view.listNotes.RemoveItems()
-	// 	notes, err := c.GetNotes()
-	// 	if err != nil {
-	// 		panic("error during fetch list")
-	// 	}
-	// 	for _, n := range notes {
-	// 		view.listNotes.AddItems(n.Name)
-	// 	}
-	// })
-	//
-	// view.listNotes.OnSelectionChanged(func(l *tui.List) {
-	// 	view.preview.SetText(c.GetContent(
-	// 		view.listNotebooks.Selected(),
-	// 		view.listNotes.Selected()))
-	// })
-	//
-	// view.listNotebooks.Select(0)
 	return &view
 }
 
-func (v *NNMainView) openFile(fileName string) {
-	var cmd *exec.Cmd
-	cmd = exec.Command(Editor, fileName)
-	cmd.Stdin = os.Stdin
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	err := cmd.Run()
-	if err != nil {
-		fmt.Println("Couldn't open the file:", err)
-		os.Exit(1)
-	}
+// ---------------------------------------------------------------------------------
+// HELPER FUNCTIONS
+// ---------------------------------------------------------------------------------
+
+func (v *NNMainView) newNote(topic string) {
+	filePath := v.model.GetNewNotePath(topic)
+	v.app.Suspend(func() {
+		v.controller.editFile(filePath)
+	})
+	v.model.SetNotebookDirty(v.listNotebooks.GetCurrentItem())
+}
+
+func (v *NNMainView) enableStatusBar() {
+	v.root.RemoveItem(v.cmd)
+	v.root.AddItem(v.statusBar, 1, 2, false)
+	v.app.SetFocus(v.listNotebooks)
+}
+
+func (v *NNMainView) enableCommand(label string) {
+	v.root.RemoveItem(v.statusBar)
+	v.cmd.SetLabel(label)
+	v.cmd.SetText("")
+	v.root.AddItem(v.cmd, 1, 2, true)
+	v.app.SetFocus(v.cmd)
 }

@@ -115,9 +115,10 @@ func NotImplemented() {
 func main() {
 
 	if len(os.Args) == 1 {
-		// dataProvider := NewTestDataProvider()
-		dataProvider := NewDataProvider()
-		NewTui(dataProvider).Run()
+		// dataModel := NewTestModel()
+		dataModel := NewDataModel()
+		controller := NewController()
+		NewTui(dataModel, controller).Run()
 	} else if len(os.Args) == 2 {
 		parseAction(os.Args[1])
 	}

@@ -4,4 +4,5 @@ package main
 type Notebook struct {
 	Name  string
 	Notes []Note
+	Dirty bool
 }
